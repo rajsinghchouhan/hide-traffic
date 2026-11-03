@@ -1,0 +1,6 @@
+{
+  "name": "ZeroTrace Redirector & Referrer Shield",
+  "description": "Privacy-preserving URL redirector, HTTP Referrer-Policy manager, and origin traffic anonymizer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
