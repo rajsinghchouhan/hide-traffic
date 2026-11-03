@@ -59,7 +59,41 @@
   </head>
   <body class="bg-slate-50 text-slate-900 antialiased selection:bg-indigo-600 selection:text-white">
     <div id="root"></div>
-    <script type="module" src="./src/main.tsx"></script>
+    <script>
+      window.__loadGitHubPagesBundle = function () {
+        if (window.__ghBundleLoaded) return;
+        window.__ghBundleLoaded = true;
+        var link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = './github-pages-bundle.css';
+        document.head.appendChild(link);
+
+        var s = document.createElement('script');
+        s.type = 'module';
+        s.src = './github-pages-bundle.js';
+        document.body.appendChild(s);
+      };
+
+      // If hosted on github.io (via static.yml), load the pre-compiled bundle immediately
+      if (/github\.io$/i.test(window.location.hostname)) {
+        window.__loadGitHubPagesBundle();
+      } else {
+        // Fallback if raw index.html is served statically without Vite dev server
+        window.addEventListener('load', function () {
+          setTimeout(function () {
+            var root = document.getElementById('root');
+            if (root && root.children.length === 0) {
+              window.__loadGitHubPagesBundle();
+            }
+          }, 350);
+        });
+      }
+    </script>
+    <script
+      type="module"
+      src="./src/main.tsx"
+      onerror="window.__loadGitHubPagesBundle && window.__loadGitHubPagesBundle()"
+    ></script>
   </body>
 </html>
 

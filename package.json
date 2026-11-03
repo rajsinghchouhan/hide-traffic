@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
-    "build": "vite build",
+    "build": "rm -rf dist && vite build && cp dist/assets/index-*.js ./github-pages-bundle.js && cp dist/assets/index-*.css ./github-pages-bundle.css",
     "start": "tsx server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",

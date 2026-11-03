@@ -194,6 +194,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const isStaticHost =
+      Boolean((window as unknown as { __ghBundleLoaded?: boolean }).__ghBundleLoaded) ||
+      /github\.io$/i.test(window.location.hostname);
+    if (isStaticHost) return;
+
     let active = true;
     const fetchLinks = async () => {
       setIsLoading(true);
@@ -1012,14 +1017,14 @@ export default function App() {
 
           {/* GitHub Pages Deployment Configuration Box */}
           <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-3">
-            <div className="text-xs font-mono text-indigo-700">
-              GitHub Pages Static Deployment Ready (.github/workflows/deploy.yml)
+            <div className="text-xs font-mono text-emerald-700">
+              GitHub Pages Static Deployment Verified (static.yml + Pre-Compiled Bundle)
             </div>
             <h3 className="text-base font-bold text-slate-900">
-              Deploying on GitHub Pages Without White Screen
+              Ready for Direct GitHub Pages Hosting (Zero Build Required)
             </h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              GitHub Pages par React/TypeScript (<code className="font-mono">.tsx</code>) files bina build kiye run nahi hoti, isliye agar branch root se direct deploy kiya jaye toh white screen aati hai. Humne <code className="font-mono">vite.config.ts</code> mein relative asset path (<code className="font-mono">base: &apos;./&apos;</code>) aur <code className="font-mono">.github/workflows/deploy.yml</code> add kar diya hai. GitHub repository mein <strong className="text-slate-900">Settings &rarr; Pages &rarr; Build and deployment &rarr; Source: GitHub Actions</strong> select karein — aapki site aur saare redirect links (<code className="font-mono">?r=slug&amp;u=...</code>) bina kisi server ke 100% static GitHub Pages par kaam karenge.
+              Aapke <code className="font-mono">.github/workflows/static.yml</code> workflow ke liye humne pre-compiled browser bundle (<code className="font-mono">github-pages-bundle.js</code> aur <code className="font-mono">github-pages-bundle.css</code>) root folder mein shamil kar diya hai. Is se GitHub Pages bina kisi build step ke direct <code className="font-mono">index.html</code> se poora dashboard aur zero-referrer redirect links (<code className="font-mono">?r=slug&amp;u=...</code>) load karega.
             </p>
           </div>
         </section>
