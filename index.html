@@ -13,10 +13,53 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Public+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+    <script>
+      // Instant Zero-Referrer Static Redirect Handler (Works on GitHub Pages & Any Static Host)
+      (function () {
+        try {
+          var params = new URLSearchParams(window.location.search);
+          var encoded = params.get('u') || params.get('to');
+          var mode = params.get('m');
+          var delay = parseInt(params.get('d') || '0', 10) || 0;
+          if (!encoded || mode === 'gate') return;
+
+          var target = null;
+          if (/^https?:\/\//i.test(encoded)) {
+            target = encoded;
+          } else {
+            var b64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+            while (b64.length % 4) b64 += '=';
+            target = decodeURIComponent(escape(window.atob(b64)));
+          }
+
+          if (target && /^https?:\/\//i.test(target)) {
+            var triggerRedirect = function () {
+              try {
+                var a = document.createElement('a');
+                a.rel = 'noreferrer noopener';
+                a.referrerPolicy = 'no-referrer';
+                a.href = target;
+                document.body.appendChild(a);
+                a.click();
+              } catch (e) {
+                window.location.replace(target);
+              }
+            };
+            if (delay <= 0) {
+              window.addEventListener('DOMContentLoaded', triggerRedirect);
+            } else {
+              setTimeout(triggerRedirect, delay * 1000);
+            }
+          }
+        } catch (err) {
+          // Continue to React app if not a direct redirect query
+        }
+      })();
+    </script>
   </head>
   <body class="bg-slate-50 text-slate-900 antialiased selection:bg-indigo-600 selection:text-white">
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>
 

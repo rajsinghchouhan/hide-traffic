@@ -6,6 +6,9 @@ import {
   normalizeSlug,
   simulateOutboundHeaders,
   generateZeroReferrerHtml,
+  encodePortableTarget,
+  decodePortableTarget,
+  buildPortableRedirectUrl,
 } from './redirectorLogic';
 
 test('validateDestinationUrl accepts valid URLs and auto-prepends https://', () => {
@@ -58,4 +61,22 @@ test('generateZeroReferrerHtml embeds no-referrer meta tag and rel="noreferrer"'
   });
   assert.ok(html.includes('<meta name="referrer" content="no-referrer" />'));
   assert.ok(html.includes('noreferrer noopener'));
+});
+
+test('encodePortableTarget and decodePortableTarget round-trip URLs for GitHub Pages static mode', () => {
+  const original = 'https://example.com/special-deal?partner=alpha';
+  const encoded = encodePortableTarget(original);
+  assert.ok(!encoded.includes('example.com'));
+  const decoded = decodePortableTarget(encoded);
+  assert.equal(decoded, original);
+
+  const portableUrl = buildPortableRedirectUrl('https://user.github.io/zerotrace', {
+    slug: 'zt-offer-prime',
+    destinationUrl: original,
+    sanitizedUrl: original,
+    stripTrackingParams: true,
+    method: 'meta-no-referrer',
+    delaySeconds: 0,
+  });
+  assert.ok(portableUrl.startsWith('https://user.github.io/zerotrace/?r=zt-offer-prime&u='));
 });

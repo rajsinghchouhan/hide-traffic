@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="referrer" content="no-referrer" />
+    <title>ZeroTrace Redirecting...</title>
+    <script>
+      // GitHub Pages SPA & Zero-Referrer Bridge Fallback
+      (function () {
+        var l = window.location;
+        var search = l.search || '';
+        var hash = l.hash || '';
+        // Forward path into query string so index.html can execute the zero-referrer redirect
+        var redirectUrl =
+          l.protocol +
+          '//' +
+          l.hostname +
+          (l.port ? ':' + l.port : '') +
+          l.pathname.split('/r/')[0].replace(/\/$/, '') +
+          '/?gh_path=' +
+          encodeURIComponent(l.pathname) +
+          (search ? '&' + search.slice(1) : '') +
+          hash;
+        l.replace(redirectUrl);
+      })();
+    </script>
+  </head>
+  <body style="background:#0f172a;color:#94a3b8;font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;">
+    Redirecting via ZeroTrace...
+  </body>
+</html>

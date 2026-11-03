@@ -5,6 +5,8 @@ import {
   validateDestinationUrl,
   sanitizeTrackingParams,
   generateSlug,
+  decodePortableTarget,
+  buildPortableRedirectUrl,
 } from './utils/redirectorLogic';
 import { HeaderInspectorPanel } from './components/HeaderInspectorPanel';
 import { CodeGeneratorPanel } from './components/CodeGeneratorPanel';
@@ -18,8 +20,11 @@ import {
   Pause,
   Play,
   SlidersHorizontal,
-  ArrowUpRight,
+  ShieldCheck,
+  ExternalLink,
 } from 'lucide-react';
+
+const STORAGE_KEY = 'zerotrace_links_v1';
 
 const FALLBACK_LINKS: RedirectLink[] = [
   {
@@ -76,9 +81,28 @@ const METHOD_LABELS: Record<RedirectMethod, string> = {
   'consent-interstitial': 'Click-Through Gate',
 };
 
+function loadInitialLinks(): RedirectLink[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return FALLBACK_LINKS;
+}
+
 export default function App() {
-  const [links, setLinks] = useState<RedirectLink[]>(FALLBACK_LINKS);
+  const [links, setLinks] = useState<RedirectLink[]>(loadInitialLinks);
   const [isLoading, setIsLoading] = useState(false);
+  const [activeGateRedirect, setActiveGateRedirect] = useState<{
+    slug: string;
+    targetUrl: string;
+  } | null>(null);
 
   // Builder Form State
   const [labelInput, setLabelInput] = useState('');
@@ -107,20 +131,83 @@ export default function App() {
 
   const destInputRef = useRef<HTMLInputElement>(null);
 
+  // Sync links to localStorage for GitHub Pages static persistence
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(links));
+    } catch {
+      // Ignore storage quota errors
+    }
+  }, [links]);
+
+  // Check if current URL is a static GitHub Pages redirect request (?r=...&u=... or ?gh_path=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const encodedTarget = params.get('u') || params.get('to');
+    const slugParam = params.get('r');
+    const modeParam = params.get('m');
+    const ghPath = params.get('gh_path') || '';
+
+    if (encodedTarget) {
+      const decoded = decodePortableTarget(encodedTarget);
+      if (decoded) {
+        if (modeParam === 'gate') {
+          setActiveGateRedirect({
+            slug: slugParam || 'protected-link',
+            targetUrl: decoded,
+          });
+          return;
+        }
+        const a = document.createElement('a');
+        a.rel = 'noreferrer noopener';
+        a.referrerPolicy = 'no-referrer';
+        a.href = decoded;
+        document.body.appendChild(a);
+        a.click();
+        return;
+      }
+    }
+
+    // Also support /r/:slug looked up from local links on static hosting
+    const slugMatch =
+      ghPath.match(/\/r\/([a-zA-Z0-9-_]+)/) ||
+      window.location.pathname.match(/\/r\/([a-zA-Z0-9-_]+)/);
+    const lookupSlug = slugMatch ? slugMatch[1] : slugParam;
+    if (lookupSlug && !encodedTarget) {
+      const matched = links.find((l) => l.slug === lookupSlug && l.status === 'active');
+      if (matched) {
+        const dest = matched.stripTrackingParams
+          ? matched.sanitizedUrl
+          : matched.destinationUrl;
+        if (matched.method === 'consent-interstitial') {
+          setActiveGateRedirect({ slug: matched.slug, targetUrl: dest });
+        } else {
+          const a = document.createElement('a');
+          a.rel = 'noreferrer noopener';
+          a.referrerPolicy = 'no-referrer';
+          a.href = dest;
+          document.body.appendChild(a);
+          a.click();
+        }
+      }
+    }
+  }, []);
+
   useEffect(() => {
     let active = true;
     const fetchLinks = async () => {
       setIsLoading(true);
       try {
-        const res = await fetch('/api/links');
-        if (res.ok) {
+        const res = await fetch('./api/links');
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('application/json')) {
           const data = await res.json();
           if (active && Array.isArray(data.links)) {
             setLinks(data.links);
           }
         }
       } catch {
-        // Keep deterministic fallback links if offline
+        // Keep localStorage / fallback links on GitHub Pages static hosting
       } finally {
         if (active) setIsLoading(false);
       }
@@ -156,34 +243,7 @@ export default function App() {
       ? sanitizeTrackingParams(validation.normalizedUrl).cleanUrl
       : validation.normalizedUrl;
 
-    try {
-      const response = await fetch('/api/links', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          label: labelInput.trim() || 'Origin-Protected Redirect Link',
-          slug: desiredSlug,
-          destinationUrl: validation.normalizedUrl,
-          method: methodInput,
-          stripTrackingParams: stripParamsInput,
-          delaySeconds: delayInput,
-        }),
-      });
-
-      if (response.ok) {
-        const { link } = await response.json();
-        setLinks((prev) => [link, ...prev]);
-        setFormSuccess(
-          `Created zero-referrer redirect link /r/${link.slug} — origin traffic source is now hidden.`
-        );
-      } else {
-        const errData = await response.json().catch(() => ({}));
-        if (errData.error) {
-          setFormError(errData.error);
-          return;
-        }
-      }
-    } catch {
+    const createLocalFallback = () => {
       const fallbackNew: RedirectLink = {
         id: `link-${Date.now()}`,
         label: labelInput.trim() || 'Origin-Protected Redirect Link',
@@ -202,6 +262,42 @@ export default function App() {
       setFormSuccess(
         `Created zero-referrer redirect link /r/${fallbackNew.slug} — origin traffic source is now hidden.`
       );
+    };
+
+    try {
+      const response = await fetch('./api/links', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          label: labelInput.trim() || 'Origin-Protected Redirect Link',
+          slug: desiredSlug,
+          destinationUrl: validation.normalizedUrl,
+          method: methodInput,
+          stripTrackingParams: stripParamsInput,
+          delaySeconds: delayInput,
+        }),
+      });
+
+      const contentType = response.headers.get('content-type') || '';
+      if (response.ok && contentType.includes('application/json')) {
+        const { link } = await response.json();
+        setLinks((prev) => [link, ...prev]);
+        setFormSuccess(
+          `Created zero-referrer redirect link /r/${link.slug} — origin traffic source is now hidden.`
+        );
+      } else if (!contentType.includes('application/json')) {
+        // Static hosting (GitHub Pages) where POST /api/links returns HTML/404
+        createLocalFallback();
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        if (errData.error) {
+          setFormError(errData.error);
+          return;
+        }
+        createLocalFallback();
+      }
+    } catch {
+      createLocalFallback();
     }
 
     setLabelInput('');
@@ -216,7 +312,7 @@ export default function App() {
       )
     );
     try {
-      await fetch(`/api/links/${id}/toggle`, { method: 'POST' });
+      await fetch(`./api/links/${id}/toggle`, { method: 'POST' });
     } catch {
       // State already updated optimistically
     }
@@ -225,7 +321,7 @@ export default function App() {
   const handleDeleteLink = async (id: string) => {
     setLinks((prev) => prev.filter((l) => l.id !== id));
     try {
-      await fetch(`/api/links/${id}`, { method: 'DELETE' });
+      await fetch(`./api/links/${id}`, { method: 'DELETE' });
     } catch {
       // State already updated optimistically
     }
@@ -244,14 +340,15 @@ export default function App() {
         : prev
     );
     try {
-      await fetch(`/api/links/${id}/hit`, { method: 'POST' });
+      await fetch(`./api/links/${id}/hit`, { method: 'POST' });
     } catch {
       // Local state already incremented
     }
   };
 
   const handleCopyRedirectUrl = async (link: RedirectLink) => {
-    const fullUrl = `${window.location.origin}/r/${link.slug}`;
+    const baseAppUrl = `${window.location.origin}${window.location.pathname.replace(/\/$/, '')}`;
+    const fullUrl = buildPortableRedirectUrl(baseAppUrl, link);
     try {
       await navigator.clipboard.writeText(fullUrl);
     } catch {
@@ -285,6 +382,41 @@ export default function App() {
 
   const totalHits = links.reduce((acc, item) => acc + item.hits, 0);
   const activeCount = links.filter((l) => l.status === 'active').length;
+
+  if (activeGateRedirect) {
+    return (
+      <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-6">
+        <div className="bg-slate-800 border border-slate-700 rounded-xl max-w-md w-full p-8 text-center space-y-5">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-indigo-500/10 text-indigo-400 mx-auto">
+            <ShieldCheck className="w-6 h-6" />
+          </div>
+          <div className="space-y-2">
+            <p className="text-xs font-mono text-slate-400">
+              ZeroTrace Bridge · /r/{activeGateRedirect.slug}
+            </p>
+            <h1 className="text-xl font-bold text-white font-display">
+              Privacy-Protected Redirect
+            </h1>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Your origin traffic source (<code className="font-mono">HTTP Referer</code>) is hidden via strict <code className="font-mono">no-referrer</code> policy.
+            </p>
+          </div>
+          <a
+            href={activeGateRedirect.targetUrl}
+            rel="noreferrer noopener"
+            referrerPolicy="no-referrer"
+            className="inline-flex items-center justify-center gap-2 w-full py-3 px-5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-500 rounded-lg transition-colors"
+          >
+            <span>Continue to Destination</span>
+            <ExternalLink className="w-4 h-4" />
+          </a>
+          <div className="text-xs font-mono text-slate-400 pt-2 border-t border-slate-700/70">
+            Referrer-Policy: no-referrer · document.referrer: &quot;&quot;
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900">
@@ -831,7 +963,7 @@ export default function App() {
             <p className="text-xs text-slate-500 mb-1">
               Technical Mechanism · Origin Privacy Architecture
             </p>
-            <h2 id="arch-heading" className="text-2xl font-bold text-slate-900 tracking-tight">
+            <h2 id="arch-heading" className="text-2xl font-bold text-slate-900">
               How ZeroTrace Hides Where Your Traffic Comes From
             </h2>
           </div>
@@ -876,6 +1008,19 @@ export default function App() {
                 <code className="font-mono text-slate-900">utm_source</code> reveal the traffic platform. ZeroTrace strips 20+ tracking parameters before forwarding.
               </p>
             </div>
+          </div>
+
+          {/* GitHub Pages Deployment Configuration Box */}
+          <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-3">
+            <div className="text-xs font-mono text-indigo-700">
+              GitHub Pages Static Deployment Ready (.github/workflows/deploy.yml)
+            </div>
+            <h3 className="text-base font-bold text-slate-900">
+              Deploying on GitHub Pages Without White Screen
+            </h3>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              GitHub Pages par React/TypeScript (<code className="font-mono">.tsx</code>) files bina build kiye run nahi hoti, isliye agar branch root se direct deploy kiya jaye toh white screen aati hai. Humne <code className="font-mono">vite.config.ts</code> mein relative asset path (<code className="font-mono">base: &apos;./&apos;</code>) aur <code className="font-mono">.github/workflows/deploy.yml</code> add kar diya hai. GitHub repository mein <strong className="text-slate-900">Settings &rarr; Pages &rarr; Build and deployment &rarr; Source: GitHub Actions</strong> select karein — aapki site aur saare redirect links (<code className="font-mono">?r=slug&amp;u=...</code>) bina kisi server ke 100% static GitHub Pages par kaam karenge.
+            </p>
           </div>
         </section>
       </main>

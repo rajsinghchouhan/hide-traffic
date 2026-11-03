@@ -2,6 +2,7 @@ import React from 'react';
 import {
   RedirectLink,
   generateZeroReferrerHtml,
+  buildPortableRedirectUrl,
 } from '../utils/redirectorLogic';
 import { X, ExternalLink, ShieldCheck, CheckCircle2 } from 'lucide-react';
 
@@ -26,7 +27,8 @@ export const BridgePreviewModal: React.FC<BridgePreviewModalProps> = ({
     title: link.label,
   });
 
-  const bridgeUrl = `${window.location.origin}/r/${link.slug}`;
+  const baseAppUrl = `${window.location.origin}${window.location.pathname.replace(/\/$/, '')}`;
+  const portableBridgeUrl = buildPortableRedirectUrl(baseAppUrl, link);
 
   return (
     <div
@@ -57,9 +59,11 @@ export const BridgePreviewModal: React.FC<BridgePreviewModalProps> = ({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-3.5 space-y-1">
-            <div className="text-slate-500">Public Redirector Bridge Link</div>
+            <div className="text-slate-500">
+              Universal Redirect Link (Works on GitHub Pages &amp; Server)
+            </div>
             <div className="font-mono font-semibold text-indigo-700 break-all">
-              {bridgeUrl}
+              {portableBridgeUrl}
             </div>
           </div>
 
@@ -118,14 +122,14 @@ export const BridgePreviewModal: React.FC<BridgePreviewModalProps> = ({
 
           <div className="flex items-center gap-3">
             <a
-              href={`/r/${link.slug}`}
+              href={portableBridgeUrl}
               target="_blank"
               rel="noreferrer noopener"
               referrerPolicy="no-referrer"
               onClick={() => onSimulateVisit(link.id)}
               className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
             >
-              <span>Open Live /r/{link.slug} Bridge</span>
+              <span>Open Live Redirect Bridge</span>
               <ExternalLink className="w-3.5 h-3.5" />
             </a>
             <button

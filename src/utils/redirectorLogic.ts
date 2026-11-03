@@ -407,3 +407,64 @@ app.get('/r/:slug', (req, res) => {
 });`;
   }
 }
+
+export function encodePortableTarget(url: string): string {
+  try {
+    const bytes = new TextEncoder().encode(url);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary)
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+  } catch {
+    return encodeURIComponent(url);
+  }
+}
+
+export function decodePortableTarget(encoded: string): string | null {
+  if (!encoded) return null;
+  try {
+    if (/^https?:\/\//i.test(encoded)) {
+      return validateDestinationUrl(encoded).normalizedUrl || null;
+    }
+    const base64 = encoded.replace(/-/g, '+').replace(/_/g, '/');
+    const pad = base64.length % 4;
+    const padded = pad ? base64 + '='.repeat(4 - pad) : base64;
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    const decoded = new TextDecoder().decode(bytes);
+    const validation = validateDestinationUrl(decoded);
+    return validation.valid ? validation.normalizedUrl : null;
+  } catch {
+    return null;
+  }
+}
+
+export function buildPortableRedirectUrl(
+  baseUrl: string,
+  link: Pick<
+    RedirectLink,
+    'slug' | 'destinationUrl' | 'sanitizedUrl' | 'stripTrackingParams' | 'method' | 'delaySeconds'
+  >
+): string {
+  const target = link.stripTrackingParams ? link.sanitizedUrl : link.destinationUrl;
+  const encoded = encodePortableTarget(target);
+  const cleanBase = baseUrl.replace(/\/$/, '');
+  const params = new URLSearchParams();
+  params.set('r', link.slug);
+  params.set('u', encoded);
+  if (link.method === 'consent-interstitial') {
+    params.set('m', 'gate');
+  }
+  if (link.delaySeconds > 0) {
+    params.set('d', String(link.delaySeconds));
+  }
+  return `${cleanBase}/?${params.toString()}`;
+}
+
